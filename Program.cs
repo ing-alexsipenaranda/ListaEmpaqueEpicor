@@ -4,95 +4,97 @@ using System.Linq;
 
 class Program
 {
-    // Definimos las capacidades de cada tipo de caja según la talla
-    static Dictionary<string, int> capacidadDocenera = new Dictionary<string, int>
-    {
-        { "34-40", 17 }, { "41-48", 15 }
-    };
-
-    static Dictionary<string, int> capacidadMaster = new Dictionary<string, int>
-    {
-        { "34-40", 21 }, { "41-48", 18 }
-    };
-
     static void Main()
     {
-        // Datos de pares disponibles por talla
-        Dictionary<int, int> paresPorTalla = new Dictionary<int, int>
+        var pedido = new List<(string referencia, int talla, int cantidad)>
         {
-            { 37, 5 }, { 38, 20 }, { 39, 45 }, { 40, 55 }, { 41, 35 },
-            { 42, 70 }, { 43, 45 }, { 44, 20 }, { 45, 5 }
+            ("2021E", 37, 17), ("2021E", 38, 34),
+           ("2021E", 39, 10), ("2021E", 40, 136),
+           ("2021E", 41, 1), 
+           ("4059",37,1), ("4059",45,1)
         };
 
-        List<string> cajas = new List<string>();
-        int numeroCaja = 1;
-        Dictionary<int, int> sobrantes = new Dictionary<int, int>();
+        var referenciasDocenera = new HashSet<string> { "1000", "2021E", "2022E", "2023E", "4058", "4059", "4059W", "5010", "5020" };
+        var referenciasMaster = new HashSet<string> { "3045", "3046", "3048", "3049" };
 
-        // Procesamos cada talla priorizando cajas Master
-        foreach (var talla in paresPorTalla.Keys.OrderBy(t => t))
+        var capacidadCajas = new Dictionary<string, (int docenera34_40, int docenera41_48, int master34_40, int master41_48)>
         {
-            int paresRestantes = paresPorTalla[talla];
-            string categoriaTalla = (talla >= 41) ? "41-48" : "34-40";
+            {"1000", (17, 15, 21, 15)},
+            {"2021E", (17, 15, 21, 15)},
+            {"2022E", (17, 15, 21, 15)},
+            {"2023E", (17, 15, 21, 15)},
+            {"4058", (12, 12, 15, 15)},
+            {"4059", (12, 12, 15, 15)},
+            {"4059W", (12, 12, 15, 15)},
+            {"5010", (12, 12, 15, 15)},
+            {"5020", (12, 12, 15, 15)},
+            {"3045", (9, 9, 12, 12)},
+            {"3046", (9, 9, 12, 12)},
+            {"3048", (9, 9, 12, 12)},
+            {"3049", (9, 9, 12, 12)}
+        };
 
-            // Llenamos primero cajas Master
-            while (paresRestantes >= capacidadMaster[categoriaTalla])
-            {
-                cajas.Add($"Caja {numeroCaja} (Master) - Talla {talla}: {capacidadMaster[categoriaTalla]} pares");
-                paresRestantes -= capacidadMaster[categoriaTalla];
-                numeroCaja++;
-            }
+        var cajas = new List<string>();
+        int cajaNumero = 1;
 
-            // Luego llenamos cajas Docenera si quedan suficientes pares
-            while (paresRestantes >= capacidadDocenera[categoriaTalla])
-            {
-                cajas.Add($"Caja {numeroCaja} (Docenera) - Talla {talla}: {capacidadDocenera[categoriaTalla]} pares");
-                paresRestantes -= capacidadDocenera[categoriaTalla];
-                numeroCaja++;
-            }
+        foreach (var grupo in pedido.OrderBy(p => p.referencia).ThenBy(p => p.talla).GroupBy(p => p.referencia))
+        {
+            var referencia = grupo.Key;
+            if (!capacidadCajas.ContainsKey(referencia)) continue;
+            var (docenera34_40, docenera41_48, master34_40, master41_48) = capacidadCajas[referencia];
 
-            // Guardamos sobrantes para combinar después
-            if (paresRestantes > 0)
+            var tallasOrdenadas = grupo.OrderBy(p => p.talla).ToList();
+            Dictionary<int, int> tallasPendientes = tallasOrdenadas.ToDictionary(p => p.talla, p => p.cantidad);
+
+            while (tallasPendientes.Values.Sum() > 0)
             {
-                sobrantes[talla] = paresRestantes;
+                List<(int talla, int cantidad)> contenidoCaja = new List<(int, int)>();
+                string tipoCaja = "";
+                int capacidadRestante = 0;
+                int paresEmpacados = 0;
+
+                foreach (var talla in tallasPendientes.Keys.OrderBy(t => t).ToList())
+                {
+                    if (tallasPendientes[talla] == 0) continue;
+
+                    bool usarDocenera = referenciasDocenera.Contains(referencia);
+                    bool usarMaster = referenciasMaster.Contains(referencia) || !usarDocenera;
+
+                    int capacidadMaxima = usarDocenera ? (talla <= 40 ? docenera34_40 : docenera41_48) : 0;
+                    int capacidadMaster = usarMaster ? (talla <= 40 ? master34_40 : master41_48) : 0;
+
+                    if (paresEmpacados == 0 && usarMaster && tallasPendientes[talla] >= capacidadMaster)
+                    {
+                        tipoCaja = "Master";
+                        capacidadRestante = capacidadMaster;
+                    }
+                    else if (paresEmpacados == 0 && usarDocenera)
+                    {
+                        tipoCaja = "Docenera";
+                        capacidadRestante = capacidadMaxima;
+                    }
+
+                    int aEmpacar = Math.Min(tallasPendientes[talla], capacidadRestante - paresEmpacados);
+                    if (aEmpacar > 0)
+                    {
+                        contenidoCaja.Add((talla, aEmpacar));
+                        tallasPendientes[talla] -= aEmpacar;
+                        paresEmpacados += aEmpacar;
+                    }
+
+                    if (paresEmpacados >= capacidadRestante)
+                        break;
+                }
+
+                if (contenidoCaja.Count > 0)
+                {
+                    string contenidoTexto = string.Join(", ", contenidoCaja.Select(c => $"Talla {c.talla}: {c.cantidad} pares"));
+                    cajas.Add($"Caja {cajaNumero} ({tipoCaja}) - Referencia {referencia} - {contenidoTexto}");
+                    cajaNumero++;
+                }
             }
         }
 
-        // Combinamos sobrantes en nuevas cajas sin exceder capacidad
-        while (sobrantes.Count > 0)
-        {
-            Dictionary<int, int> tallasCombinadas = new Dictionary<int, int>();
-            int totalPares = 0;
-            string tipoCaja = "";
-            int capacidad = 0;
-
-            foreach (var entry in sobrantes.ToList())
-            {
-                int talla = entry.Key;
-                int pares = entry.Value;
-                string categoriaTalla = (talla >= 41) ? "41-48" : "34-40";
-                int capacidadMaxima = capacidadMaster[categoriaTalla];
-
-                if (tipoCaja == "" || capacidad == capacidadMaxima)
-                {
-                    tipoCaja = (totalPares + pares <= capacidadMaxima) ? "Master" : "Docenera";
-                    capacidad = (tipoCaja == "Master") ? capacidadMaster[categoriaTalla] : capacidadDocenera[categoriaTalla];
-                }
-
-                if (totalPares + pares <= capacidad)
-                {
-                    tallasCombinadas[talla] = pares;
-                    totalPares += pares;
-                    sobrantes.Remove(talla);
-                }
-            }
-
-            // Formatear la salida detallando cada talla y su cantidad de pares en la caja
-            string detallesTallas = string.Join(", ", tallasCombinadas.Select(t => $"Talla {t.Key}: {t.Value} pares"));
-            cajas.Add($"Caja {numeroCaja} ({tipoCaja}) - {detallesTallas}");
-            numeroCaja++;
-        }
-
-        // Imprimimos el resultado
         foreach (var caja in cajas)
         {
             Console.WriteLine(caja);
