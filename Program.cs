@@ -8,10 +8,10 @@ class Program
     {
         var pedido = new List<(string referencia, int talla, int cantidad)>
         {
-            ("2021E", 37, 17), ("2021E", 38, 34),
-           ("2021E", 39, 10), ("2021E", 40, 136),
-           ("2021E", 41, 1), 
-           ("4059",37,1), ("4059",45,1)
+           ("2022E", 37, 5), ("2022E", 38, 20),
+           ("2022E", 39, 45), ("2022E", 40, 55),
+           ("2022E", 41, 35), ("2022E", 42, 70),
+           ("2022E", 43, 45), ("2022E", 44, 20), ("2022E", 45, 5)
         };
 
         var referenciasDocenera = new HashSet<string> { "1000", "2021E", "2022E", "2023E", "4058", "4059", "4059W", "5010", "5020" };
@@ -46,6 +46,9 @@ class Program
             var tallasOrdenadas = grupo.OrderBy(p => p.talla).ToList();
             Dictionary<int, int> tallasPendientes = tallasOrdenadas.ToDictionary(p => p.talla, p => p.cantidad);
 
+            bool esDocenera = referenciasDocenera.Contains(referencia);
+            bool esMaster = referenciasMaster.Contains(referencia);
+
             while (tallasPendientes.Values.Sum() > 0)
             {
                 List<(int talla, int cantidad)> contenidoCaja = new List<(int, int)>();
@@ -53,28 +56,24 @@ class Program
                 int capacidadRestante = 0;
                 int paresEmpacados = 0;
 
+                if (esMaster && tallasPendientes.Values.Sum() >= master34_40)
+                {
+                    tipoCaja = "Master";
+                    capacidadRestante = master34_40;
+                }
+                else
+                {
+                    tipoCaja = "Docenera";
+                    capacidadRestante = docenera34_40;
+                }
+
                 foreach (var talla in tallasPendientes.Keys.OrderBy(t => t).ToList())
                 {
                     if (tallasPendientes[talla] == 0) continue;
 
-                    bool usarDocenera = referenciasDocenera.Contains(referencia);
-                    bool usarMaster = referenciasMaster.Contains(referencia) || !usarDocenera;
+                    int capacidadTalla = talla >= 41 ? (tipoCaja == "Master" ? master41_48 : docenera41_48) : capacidadRestante;
+                    int aEmpacar = Math.Min(tallasPendientes[talla], capacidadTalla - paresEmpacados);
 
-                    int capacidadMaxima = usarDocenera ? (talla <= 40 ? docenera34_40 : docenera41_48) : 0;
-                    int capacidadMaster = usarMaster ? (talla <= 40 ? master34_40 : master41_48) : 0;
-
-                    if (paresEmpacados == 0 && usarMaster && tallasPendientes[talla] >= capacidadMaster)
-                    {
-                        tipoCaja = "Master";
-                        capacidadRestante = capacidadMaster;
-                    }
-                    else if (paresEmpacados == 0 && usarDocenera)
-                    {
-                        tipoCaja = "Docenera";
-                        capacidadRestante = capacidadMaxima;
-                    }
-
-                    int aEmpacar = Math.Min(tallasPendientes[talla], capacidadRestante - paresEmpacados);
                     if (aEmpacar > 0)
                     {
                         contenidoCaja.Add((talla, aEmpacar));
@@ -82,20 +81,20 @@ class Program
                         paresEmpacados += aEmpacar;
                     }
 
-                    if (paresEmpacados >= capacidadRestante)
+                    if (paresEmpacados >= capacidadTalla)
                         break;
                 }
 
                 if (contenidoCaja.Count > 0)
                 {
-                    string contenidoTexto = string.Join(", ", contenidoCaja.Select(c => $"Talla {c.talla}: {c.cantidad} pares"));
-                    cajas.Add($"Caja {cajaNumero} ({tipoCaja}) - Referencia {referencia} - {contenidoTexto}");
+                    string contenidoTexto = string.Join(", ", contenidoCaja.OrderBy(c => c.talla).Select(c => $"Talla {c.talla}: {c.cantidad} pares"));
+                    cajas.Add($"Caja {cajaNumero:D2} ({tipoCaja}) - Referencia {referencia} - {contenidoTexto}");
                     cajaNumero++;
                 }
             }
         }
 
-        foreach (var caja in cajas)
+        foreach (var caja in cajas.OrderBy(c => int.Parse(c.Split(' ')[1])))
         {
             Console.WriteLine(caja);
         }
