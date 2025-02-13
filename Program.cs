@@ -8,13 +8,15 @@ class Program
     {
         var pedido = new List<(string referencia, int talla, int cantidad)>
         {
-           ("2022E", 37, 5), ("2022E", 38, 20),
-           ("2022E", 39, 45), ("2022E", 40, 55),
-           ("2022E", 41, 35), ("2022E", 42, 70),
-           ("2022E", 43, 45), ("2022E", 44, 20), ("2022E", 45, 5)
+           ("2021E", 35,2), ("2021E", 36, 5),("2021E", 37, 3),("2021E", 38, 18),("2021E", 39,12),("2021E", 40,44),("2021E", 41,3),("2021E", 42,4),("2021E", 43,31),
+           ("2022E", 38, 5),("2022E", 39, 4),("2022E", 40, 29),("2022E", 41, 30),("2022E", 42, 12),("2022E", 43,12),("2022E", 45,5),
+           ("4059", 36, 2), ("4059", 37, 3),("4059", 38,1),("4059", 39,4),("4059", 40,10),("4059", 41,7),("4059", 42,2),("4059", 43,3),
+           ("3046", 38, 1),("3046", 40,3),("3046", 41,4)
+
+
         };
 
-        var referenciasDocenera = new HashSet<string> { "1000", "2021E", "2022E", "2023E", "4058", "4059", "4059W", "5010", "5020" };
+        var referenciasDocenera = new HashSet<string> { "1000", "2021E", "2022E", "2023E" };
         var referenciasMaster = new HashSet<string> { "3045", "3046", "3048", "3049" };
 
         var capacidadCajas = new Dictionary<string, (int docenera34_40, int docenera41_48, int master34_40, int master41_48)>
@@ -34,7 +36,7 @@ class Program
             {"3049", (9, 9, 12, 12)}
         };
 
-        var cajas = new List<string>();
+        var cajas = new List<(string contenido, int pares)>();
         int cajaNumero = 1;
 
         foreach (var grupo in pedido.OrderBy(p => p.referencia).ThenBy(p => p.talla).GroupBy(p => p.referencia))
@@ -43,20 +45,26 @@ class Program
             if (!capacidadCajas.ContainsKey(referencia)) continue;
             var (docenera34_40, docenera41_48, master34_40, master41_48) = capacidadCajas[referencia];
 
-            var tallasOrdenadas = grupo.OrderBy(p => p.talla).ToList();
-            Dictionary<int, int> tallasPendientes = tallasOrdenadas.ToDictionary(p => p.talla, p => p.cantidad);
+            var tallasAgrupadas = new Dictionary<int, int>();
+            foreach (var item in grupo)
+            {
+                if (tallasAgrupadas.ContainsKey(item.talla))
+                    tallasAgrupadas[item.talla] += item.cantidad;
+                else
+                    tallasAgrupadas[item.talla] = item.cantidad;
+            }
 
             bool esDocenera = referenciasDocenera.Contains(referencia);
             bool esMaster = referenciasMaster.Contains(referencia);
 
-            while (tallasPendientes.Values.Sum() > 0)
+            while (tallasAgrupadas.Values.Sum() > 0)
             {
                 List<(int talla, int cantidad)> contenidoCaja = new List<(int, int)>();
                 string tipoCaja = "";
                 int capacidadRestante = 0;
                 int paresEmpacados = 0;
 
-                if (esMaster && tallasPendientes.Values.Sum() >= master34_40)
+                if (esMaster && tallasAgrupadas.Values.Sum() >= master34_40)
                 {
                     tipoCaja = "Master";
                     capacidadRestante = master34_40;
@@ -67,36 +75,49 @@ class Program
                     capacidadRestante = docenera34_40;
                 }
 
-                foreach (var talla in tallasPendientes.Keys.OrderBy(t => t).ToList())
+                foreach (var talla in tallasAgrupadas.Keys.OrderBy(t => t).ToList())
                 {
-                    if (tallasPendientes[talla] == 0) continue;
+                    if (tallasAgrupadas[talla] == 0) continue;
 
-                    int capacidadTalla = talla >= 41 ? (tipoCaja == "Master" ? master41_48 : docenera41_48) : capacidadRestante;
-                    int aEmpacar = Math.Min(tallasPendientes[talla], capacidadTalla - paresEmpacados);
-
+                    int maxPorCaja = (talla >= 41) ? (esMaster ? master41_48 : docenera41_48) : capacidadRestante;
+                    int aEmpacar = Math.Min(tallasAgrupadas[talla], maxPorCaja - paresEmpacados);
                     if (aEmpacar > 0)
                     {
                         contenidoCaja.Add((talla, aEmpacar));
-                        tallasPendientes[talla] -= aEmpacar;
+                        tallasAgrupadas[talla] -= aEmpacar;
                         paresEmpacados += aEmpacar;
                     }
 
-                    if (paresEmpacados >= capacidadTalla)
+                    if (paresEmpacados >= maxPorCaja)
                         break;
                 }
 
                 if (contenidoCaja.Count > 0)
                 {
                     string contenidoTexto = string.Join(", ", contenidoCaja.OrderBy(c => c.talla).Select(c => $"Talla {c.talla}: {c.cantidad} pares"));
-                    cajas.Add($"Caja {cajaNumero:D2} ({tipoCaja}) - Referencia {referencia} - {contenidoTexto}");
+                    cajas.Add(($"Caja {cajaNumero:D2} ({tipoCaja}) - Referencia {referencia} - {contenidoTexto}", paresEmpacados));
                     cajaNumero++;
                 }
             }
         }
 
-        foreach (var caja in cajas.OrderBy(c => int.Parse(c.Split(' ')[1])))
+        for (int i = cajas.Count - 1; i > 0; i--)
         {
-            Console.WriteLine(caja);
+            if (cajas[i].pares <= 4 && cajas[i].contenido.Contains("Docenera"))
+            {
+                string referenciaCaja = cajas[i].contenido.Split('-')[1].Trim().Split(' ')[1];
+                int capacidadMaximaMaster = capacidadCajas[referenciaCaja].master34_40;
+                if (cajas[i - 1].contenido.Contains(referenciaCaja) && cajas[i - 1].pares + cajas[i].pares <= capacidadMaximaMaster)
+                {
+                    cajas[i - 1] = (cajas[i - 1].contenido.Replace("Docenera", "Master") + ", " + cajas[i].contenido.Split('-')[2].Trim(), cajas[i - 1].pares + cajas[i].pares);
+                    cajas.RemoveAt(i);
+                }
+            }
+        }
+
+        foreach (var caja in cajas.OrderBy(c => int.Parse(c.contenido.Split(' ')[1])))
+        {
+            Console.WriteLine(caja.contenido);
         }
     }
 }
